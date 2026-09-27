@@ -1,4 +1,14 @@
-import { firebaseConfig, ORIGINS } from './config.js';
+// Points de départ par défaut (surchargés par config.js)
+let ORIGINS = {
+  corbie:  { label: 'Corbie (80800)',  lat: 49.9086, lon: 2.5097 },
+  oignies: { label: 'Oignies (62590)', lat: 50.4686, lon: 2.9933 },
+};
+function showFatal(title, detail) {
+  const m = document.getElementById('main');
+  if (m) m.innerHTML = `<div class="empty card"><h2>${title}</h2><p style="text-align:left;white-space:pre-line">${String(detail).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))}</p></div>`;
+}
+window.addEventListener('error', e => { if (document.querySelector('#main .loading')) showFatal('Erreur au démarrage', e.message); });
+window.addEventListener('unhandledrejection', e => { if (document.querySelector('#main .loading')) showFatal('Erreur au démarrage', e.reason?.message || e.reason); });
 import { createLocalStore } from './store-local.js';
 
 // ───────────────────────── Constantes ─────────────────────────
@@ -76,12 +86,29 @@ let store;
 let me = null;
 let view = 'salons';
 const prefsKey = 'salons-du-livre-filtres';
-let F = { q: '', statut: 'tous', showHS: false, periode: 'tous', tri: 'date', distMax: '', distRef: 'corbie' };
+const ALL_ST = ['a_etudier', 'contacte', 'candidature', 'inscrit', 'hors_sujet'];
+const ALL_PER = ['avenir', 'passe', 'sansdate'];
+const DEF_ST = ['a_etudier', 'contacte', 'candidature', 'inscrit'];
+let F = { q: '', statuts: DEF_ST.slice(), periodes: ALL_PER.slice(), tri: 'date', distMax: '', distRef: 'corbie' };
 try { Object.assign(F, JSON.parse(localStorage.getItem(prefsKey)) || {}); } catch {}
+if (!Array.isArray(F.statuts)) F.statuts = DEF_ST.slice();
+if (!Array.isArray(F.periodes)) F.periodes = ALL_PER.slice();
+delete F.statut; delete F.showHS; delete F.periode;
+const periodeOf = s => isUpcoming(s) ? 'avenir' : (s.dateDebut || s.dateFin) ? 'passe' : 'sansdate';
 const saveFilters = () => { try { localStorage.setItem(prefsKey, JSON.stringify(F)); } catch {} };
 
 // ───────────────────────── Démarrage ─────────────────────────
 async function boot() {
+  let firebaseConfig = null;
+  try {
+    const cfg = await import('./config.js');
+    firebaseConfig = cfg.firebaseConfig || null;
+    if (cfg.ORIGINS) ORIGINS = cfg.ORIGINS;
+  } catch (e) {
+    console.error(e);
+    showFatal('Le fichier config.js contient une erreur', `${e.message}<br><br>Il doit contenir uniquement le bloc « export const firebaseConfig = { … }; » (sans les lignes « import … » ni « initializeApp » fournies par Firebase), suivi du bloc ORIGINS.`.replace(/<br>/g, '\n'));
+    return;
+  }
   if (firebaseConfig) {
     try {
       const { createFirebaseStore } = await import('./store-firebase.js');
@@ -287,11 +314,8 @@ function filteredSalons() {
   const q = norm(F.q);
   let list = Object.entries(store.salons).map(([id, s]) => ({ id, ...s, _st: myStatut(id) }));
   list = list.filter(s => {
-    if (!F.showHS && s._st === 'hors_sujet' && F.statut !== 'hors_sujet') return false;
-    if (F.statut !== 'tous' && s._st !== F.statut) return false;
-    if (F.periode === 'avenir' && !isUpcoming(s)) return false;
-    if (F.periode === 'passes' && (isUpcoming(s) || !s.dateDebut)) return false;
-    if (F.periode === 'sansdate' && isUpcoming(s)) return false;
+    if (!F.statuts.includes(s._st)) return false;
+    if (!F.periodes.includes(periodeOf(s))) return false;
     if (F.distMax) {
       const d = F.distRef === 'oignies' ? s.distOignies : s.distCorbie;
       if (d == null || d > +F.distMax) return false;
@@ -348,6 +372,11 @@ function renderSalons() {
   const nbInscrits = Object.entries(mine).filter(([id, v]) => v.statut === 'inscrit' && store.salons[id] && isUpcoming(store.salons[id])).length;
   const limites30 = Object.entries(store.salons).filter(([id, s]) => { const l = s.dateLimite; return l && l >= t && daysUntil(l) <= 30 && !['inscrit', 'hors_sujet'].includes(myStatut(id)); }).length;
   const aVenir = Object.values(store.salons).filter(isUpcoming).length;
+  const counts = { st: {}, per: {} };
+  for (const [id, s] of Object.entries(store.salons)) {
+    const st = myStatut(id); counts.st[st] = (counts.st[st] || 0) + 1;
+    const pe = periodeOf(s); counts.per[pe] = (counts.per[pe] || 0) + 1;
+  }
 
   main.innerHTML = `
   <section class="stats">
@@ -358,23 +387,28 @@ function renderSalons() {
   </section>
   <section class="toolbar card">
     <div class="search">${ICONS.search}<input type="search" id="q" placeholder="Rechercher un salon, une ville, un code postal…" value="${esc(F.q)}"></div>
-    <select id="fStatut" title="Mon statut">
-      <option value="tous">Tous statuts</option>
-      ${STATUT_ORDER.map(k => `<option value="${k}" ${F.statut === k ? 'selected' : ''}>${STATUTS[k].label}</option>`).join('')}
-    </select>
-    <select id="fPeriode" title="Période">
-      <option value="tous" ${F.periode === 'tous' ? 'selected' : ''}>Toutes dates</option>
-      <option value="avenir" ${F.periode === 'avenir' ? 'selected' : ''}>À venir</option>
-      <option value="sansdate" ${F.periode === 'sansdate' ? 'selected' : ''}>Date à trouver</option>
-      <option value="passes" ${F.periode === 'passes' ? 'selected' : ''}>Passés</option>
-    </select>
-    <span class="dist-filter">≤ <input type="number" id="fDist" min="0" step="10" placeholder="km" value="${esc(F.distMax)}"> km de
-      <span class="sel-ico">${ICONS.pin}<select id="fDistRef"><option value="corbie" ${F.distRef === 'corbie' ? 'selected' : ''}>Corbie</option><option value="oignies" ${F.distRef === 'oignies' ? 'selected' : ''}>Oignies</option></select></span></span>
-    <label class="check"><input type="checkbox" id="fHS" ${F.showHS ? 'checked' : ''}> Afficher hors sujet</label>
-    <div class="tb-break"></div>
     <button class="btn primary" id="addSalon">${ICONS.plus}Nouveau salon</button>
-    <div class="grow"></div>
     <button class="btn btn-outline" id="exportCsv" title="Exporter la liste affichée">${ICONS.download}Export CSV</button>
+    <div class="filters">
+      <div class="fblock">
+        <div class="fb-head"><span class="fb-title">${ICONS.flag}Mon statut</span><span class="fb-links"><button class="lnk" data-st-all>tous</button> · <button class="lnk" data-st-none>aucun</button></span></div>
+        <div class="fchips">${ALL_ST.map(k => `<label class="fchip fs-${k} ${F.statuts.includes(k) ? 'on' : ''}"><input type="checkbox" data-st="${k}" ${F.statuts.includes(k) ? 'checked' : ''}><span class="dot"></span>${STATUTS[k].label}<b>${counts.st[k] || 0}</b></label>`).join('')}</div>
+      </div>
+      <div class="fblock">
+        <div class="fb-head"><span class="fb-title">${ICONS.calendar}Période</span></div>
+        <div class="fchips">${[['avenir', 'À venir'], ['passe', 'Passés'], ['sansdate', 'Sans date']].map(([k, l]) => `<label class="fchip ${F.periodes.includes(k) ? 'on' : ''}"><input type="checkbox" data-per="${k}" ${F.periodes.includes(k) ? 'checked' : ''}>${l}<b>${counts.per[k] || 0}</b></label>`).join('')}</div>
+      </div>
+      <div class="fblock fb-dist">
+        <div class="fb-head"><span class="fb-title">${ICONS.pin}Distance</span>${F.distMax ? '<span class="fb-links"><button class="lnk" id="distClear">effacer</button></span>' : ''}</div>
+        <div class="dist-row">
+          <span>à moins de</span>
+          <span class="km-in"><input type="number" id="fDist" min="0" step="5" placeholder="—" value="${esc(F.distMax)}"><i>km</i></span>
+          <span>de</span>
+          <span class="seg-mini">${['corbie', 'oignies'].map(k => `<button class="${F.distRef === k ? 'on' : ''}" data-ref="${k}">${k === 'corbie' ? 'Corbie' : 'Oignies'}</button>`).join('')}</span>
+        </div>
+        <div class="km-presets">${[25, 50, 75, 100, 150].map(n => `<button class="${+F.distMax === n ? 'on' : ''}" data-km="${n}">${n} km</button>`).join('')}</div>
+      </div>
+    </div>
   </section>
   <section class="sortbar" role="group" aria-label="Trier">
     <span class="sort-lbl">Trier par</span>
@@ -391,17 +425,23 @@ function renderSalons() {
   $$('.sort-btn, .th[data-tri]').forEach(b => b.onclick = () => { F.tri = b.dataset.tri; saveFilters(); render(); });
   const bind = (id, key, ev = 'change', fn = el => el.value) => $(id).addEventListener(ev, e => { F[key] = fn(e.target); saveFilters(); renderSalonsKeepFocus(id); });
   bind('#q', 'q', 'input');
-  bind('#fStatut', 'statut'); bind('#fPeriode', 'periode'); bind('#fDistRef', 'distRef');
   bind('#fDist', 'distMax', 'input');
-  bind('#fHS', 'showHS', 'change', el => el.checked);
+  $$('input[data-st]').forEach(i => i.onchange = () => { F.statuts = $$('input[data-st]:checked').map(x => x.dataset.st); saveFilters(); render(); });
+  $$('input[data-per]').forEach(i => i.onchange = () => { F.periodes = $$('input[data-per]:checked').map(x => x.dataset.per); saveFilters(); render(); });
+  $('[data-st-all]').onclick = () => { F.statuts = ALL_ST.slice(); saveFilters(); render(); };
+  $('[data-st-none]').onclick = () => { F.statuts = []; saveFilters(); render(); };
+  $$('[data-ref]').forEach(b => b.onclick = () => { F.distRef = b.dataset.ref; saveFilters(); render(); });
+  $$('[data-km]').forEach(b => b.onclick = () => { F.distMax = +F.distMax === +b.dataset.km ? '' : b.dataset.km; saveFilters(); render(); });
+  if ($('#distClear')) $('#distClear').onclick = () => { F.distMax = ''; saveFilters(); render(); };
   $('#addSalon').onclick = () => openSalon(null);
   $('#exportCsv').onclick = () => exportCsv(list);
   $$('.stat').forEach(b => b.onclick = () => {
     const k = b.dataset.quick;
-    Object.assign(F, { q: '', distMax: '', statut: 'tous', periode: 'tous', tri: 'date' });
-    if (k === 'inscrit') Object.assign(F, { statut: 'inscrit', periode: 'avenir' });
-    if (k === 'limite') Object.assign(F, { tri: 'limite', periode: 'tous' });
-    if (k === 'avenir') Object.assign(F, { periode: 'avenir' });
+    Object.assign(F, { q: '', distMax: '', statuts: DEF_ST.slice(), periodes: ALL_PER.slice(), tri: 'date' });
+    if (k === 'inscrit') Object.assign(F, { statuts: ['inscrit'], periodes: ['avenir'] });
+    if (k === 'limite') Object.assign(F, { tri: 'limite' });
+    if (k === 'avenir') Object.assign(F, { periodes: ['avenir'] });
+    if (k === 'all') Object.assign(F, { statuts: ALL_ST.slice() });
     saveFilters(); render();
   });
   $$('.row[data-id]').forEach(r => r.addEventListener('click', e => {
@@ -483,7 +523,7 @@ function openSalon(id) {
         <h2 id="mTitle">${id ? esc(s.ville) + ' <span class="m-sub">' + esc(s.nom) + '</span>' : 'Nouveau salon'}</h2>
         <p class="muted" id="mMeta">${id && s.majPar ? `Modifié par ${esc(s.majPar)} le ${esc(fmtDate((s.majLe || '').slice(0, 10), false))}` : id ? '' : 'Commence par la ville : le code postal et les distances se remplissent tout seuls.'}</p>
       </div>
-      <div class="m-right"><span class="save-state" id="saveState"></span><button type="button" class="x" data-close aria-label="Fermer">×</button></div>
+      <div class="m-right"><span class="save-state" id="saveState"></span>${id ? `<button type="button" class="btn btn-ia" id="iaFiche" title="Chercher la prochaine édition avec ChatGPT">✨ IA</button>` : ''}<button type="button" class="x" data-close aria-label="Fermer">×</button></div>
     </header>
 
     <form id="salonForm" class="salon-form" autocomplete="off">
@@ -615,6 +655,7 @@ function openSalon(id) {
     stateEl.textContent = 'Statut : ' + STATUTS[b.dataset.st].label + ' ✓'; stateEl.className = 'save-state ok';
   });
 
+  if ($('#iaFiche')) $('#iaFiche').onclick = async () => { await saveInfos(); iaFiche(sid); };
   $('#delSalon').onclick = async () => {
     if (!confirm(`Supprimer « ${v('nom') || v('ville')} » pour tous les auteurs ?`)) return;
     closeHooks = []; // pas de sauvegarde après suppression
@@ -1169,15 +1210,19 @@ function renderIAMaj() {
 function buildPromptMaj() {
   const ids = (IA.sel || []).filter(id => store.salons[id]);
   if (!ids.length) { toast('Coche au moins un salon'); return ''; }
-  IA.refs = {};
+  const r = promptMaj(ids);
+  IA.refs = r.refs; saveIA();
+  return r.prompt;
+}
+function promptMaj(ids) {
+  const refs = {};
   const lignes = ids.map((id, i) => {
-    const ref = 'S' + (i + 1); IA.refs[ref] = id;
+    const ref = 'S' + (i + 1); refs[ref] = id;
     const s = store.salons[id], c = s.contacts || {};
     const liens = [c.site, c.facebook, c.instagram].filter(Boolean).join(' ; ');
     return `${ref} | ${s.nom} | ${s.ville}${s.codePostal ? ' (' + s.codePostal + ')' : ''}${s.pays && s.pays !== 'France' ? ', ' + s.pays : ''} | dernière édition connue : ${lastDate(s) ? fmtRange(s.dateDebut, s.dateFin) : 'inconnue'}${liens ? ' | liens connus : ' + liens : ''}`;
   });
-  saveIA();
-  return `Tu es un assistant de veille pour des auteurs qui participent à des salons du livre (stands de dédicace).
+  return { refs, prompt: `Tu es un assistant de veille pour des auteurs qui participent à des salons du livre (stands de dédicace).
 
 MISSION : pour chacun des salons ci-dessous, dont la dernière édition connue est passée, utilise la recherche web pour trouver la date de la PROCHAINE édition (postérieure au ${fmtDate(todayIso(), false)}), ainsi que les horaires, la date limite d'inscription des auteurs et les contacts à jour.
 Privilégie les sources officielles et récentes : site de la mairie ou de la médiathèque, page Facebook / Instagram de l'événement, site de l'organisateur, agendas régionaux du livre.
@@ -1209,7 +1254,7 @@ FORMAT DE RÉPONSE : réponds UNIQUEMENT avec un bloc de code JSON valide, sans 
     }
   ]
 }
-\`\`\``;
+\`\`\`` };
 }
 
 const MAJ_FIELDS = [
@@ -1217,12 +1262,12 @@ const MAJ_FIELDS = [
   ['emails', 'Emails (ajout)', 'list'], ['telephones', 'Téléphones (ajout)', 'list'],
   ['site', 'Site web', 'c'], ['facebook', 'Facebook', 'c'], ['instagram', 'Instagram', 'c'], ['formulaire', 'Formulaire', 'c'],
 ];
-function parseMaj(j) {
+function parseMaj(j, refs = IA.refs) {
   const list = Array.isArray(j) ? j : (j.resultats || j.salons || []);
   if (!list.length) throw new Error('La réponse ne contient aucun résultat.');
   const t = todayIso();
   return list.map((x, i) => {
-    const id = IA.refs[str(x.ref).toUpperCase()] || null;
+    const id = refs[str(x.ref).toUpperCase()] || (Object.keys(refs).length === 1 ? Object.values(refs)[0] : null);
     const s = id && store.salons[id];
     const r = { _k: i, ref: str(x.ref), id, trouve: x.trouve !== false && x.trouve !== 'false', commentaire: str(x.commentaire), source: str(x.source), confiance: norm(x.confiance), changes: [] };
     if (!s) { r.orphelin = true; return r; }
@@ -1253,76 +1298,128 @@ function parseMaj(j) {
   });
 }
 
+const fmtV = (c, v) => c.type === 'date' ? (v ? fmtDate(v, false) : '—') : Array.isArray(v) ? v.join(', ') : (v || '—');
+const noteText = r => `MAJ IA ${fmtDate(todayIso(), false)}${r.commentaire ? ' — ' + r.commentaire : ''}${r.source ? ' — source : ' + r.source : ''}`;
+
+function majCardHtml(r, withTitle = true) {
+  const s = store.salons[r.id];
+  return `<div class="maj-card" data-k="${r._k}">
+    ${withTitle ? `<div class="ia-title"><label class="check"><input type="checkbox" class="m-all" ${r.changes.every(c => c.on) ? 'checked' : ''}></label>
+      <b>${esc(s.ville)}</b> <span class="cp">${esc(s.codePostal || '')}</span> · ${esc(s.nom)}
+      ${r.confiance ? `<span class="conf c-${esc(r.confiance)}">${CONF[r.confiance] || esc(r.confiance)}</span>` : ''}
+      ${r.source ? `<a href="${esc(safeUrl(r.source))}" target="_blank" rel="noopener" class="small">source</a>` : ''}</div>`
+    : `<div class="ia-title">${r.confiance ? `<span class="conf c-${esc(r.confiance)}">${CONF[r.confiance] || esc(r.confiance)}</span>` : ''}${r.source ? `<a href="${esc(safeUrl(r.source))}" target="_blank" rel="noopener" class="small">voir la source</a>` : ''}</div>`}
+    ${r.commentaire ? `<div class="ia-desc">${esc(r.commentaire)}</div>` : ''}
+    <table class="diff"><tbody>
+      ${r.changes.map((c, i) => `<tr class="${c.on ? 'on' : ''}"><td><input type="checkbox" data-i="${i}" ${c.on ? 'checked' : ''}></td><th>${esc(c.label)}</th>
+        <td class="old ${c.type === 'list' ? 'keep' : ''}">${esc(fmtV(c, c.old))}${c.type === 'list' && c.old ? ' <span class="small">(conservés)</span>' : ''}</td><td class="arrow">→</td><td class="neu">${esc(fmtV(c, c.neu))}${c.warn ? ` <span class="warn-text small">(${esc(c.warn)})</span>` : ''}</td></tr>`).join('')}
+      ${(r.commentaire || r.source) ? `<tr class="${r.noteOn ? 'on' : ''}"><td><input type="checkbox" data-note ${r.noteOn ? 'checked' : ''}></td><th>Notes communes</th><td colspan="3" class="neu">ajouter : « ${esc(noteText(r))} »</td></tr>` : ''}
+    </tbody></table>
+  </div>`;
+}
+function bindMajCard(card, r, rerender) {
+  $$('input[data-i]', card).forEach(i => i.onchange = () => { r.changes[+i.dataset.i].on = i.checked; i.closest('tr').classList.toggle('on', i.checked); const a = $('.m-all', card); if (a) a.checked = r.changes.every(c => c.on); });
+  const nt = $('input[data-note]', card); if (nt) nt.onchange = () => { r.noteOn = nt.checked; nt.closest('tr').classList.toggle('on', nt.checked); };
+  const all = $('.m-all', card); if (all) all.onchange = e => { r.changes.forEach(c => c.on = e.target.checked); r.noteOn = e.target.checked; rerender(); };
+}
+// Applique les modifications cochées d'un résultat ; renvoie true si quelque chose a été enregistré
+async function applyMaj(r) {
+  const on = r.changes.filter(c => c.on);
+  if (!on.length && !r.noteOn) return false;
+  const s = store.salons[r.id]; if (!s) return false;
+  const patch = { contacts: { ...(s.contacts || {}) } };
+  for (const c of on) {
+    if (c.type === 'list') patch.contacts[c.k] = [...(s.contacts?.[c.k] || []), ...c.neu];
+    else if (c.type === 'c') patch.contacts[c.k] = c.neu;
+    else patch[c.k] = c.neu;
+  }
+  // Historique : on garde l'édition et la date limite précédentes
+  if (patch.dateDebut && s.dateDebut && patch.dateDebut !== s.dateDebut) {
+    const he = [...(s.historiqueEditions || [])];
+    if (!he.some(x => x.dateDebut === s.dateDebut)) he.push({ dateDebut: s.dateDebut, dateFin: s.dateFin || '', horaires: s.horaires || '' });
+    patch.historiqueEditions = he.sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
+    if (!('dateFin' in patch)) patch.dateFin = '';
+  }
+  if (patch.dateLimite && s.dateLimite && patch.dateLimite !== s.dateLimite) {
+    const hl = [...(s.historiqueLimites || [])]; if (!hl.includes(s.dateLimite)) hl.push(s.dateLimite); patch.historiqueLimites = hl.sort();
+  }
+  if (r.noteOn && (r.commentaire || r.source)) patch.notes = [s.notes, noteText(r)].filter(Boolean).join('\n');
+  await store.saveSalon(r.id, patch);
+  return true;
+}
+
 function renderResultMaj() {
   const box = $('#iaResult'); const R = IA.resultat;
   if (!R) { box.innerHTML = ''; return; }
   const found = R.filter(r => r.id && r.changes.length);
   const rest = R.filter(r => !(r.id && r.changes.length));
-  const count = () => found.reduce((a, r) => a + r.changes.filter(c => c.on).length + (r.noteOn && r.changes.some(c => c.on) ? 0 : 0), 0);
-  const fmtV = (c, v) => c.type === 'date' ? (v ? fmtDate(v, false) : '—') : Array.isArray(v) ? v.join(', ') : (v || '—');
   box.innerHTML = `
   <section class="card ia-step">
     <div class="step-n">4</div>
     <div class="step-body">
       <h3>${found.length} salon${found.length > 1 ? 's' : ''} avec des informations nouvelles — coche ce que tu veux conserver</h3>
-      <div class="ia-list">
-      ${found.map(r => { const s = store.salons[r.id]; return `<div class="maj-card" data-k="${r._k}">
-        <div class="ia-title"><label class="check"><input type="checkbox" class="m-all" ${r.changes.every(c => c.on) ? 'checked' : ''}></label>
-          <b>${esc(s.ville)}</b> <span class="cp">${esc(s.codePostal || '')}</span> · ${esc(s.nom)}
-          ${r.confiance ? `<span class="conf c-${esc(r.confiance)}">${CONF[r.confiance] || esc(r.confiance)}</span>` : ''}
-          ${r.source ? `<a href="${esc(safeUrl(r.source))}" target="_blank" rel="noopener" class="small">source</a>` : ''}</div>
-        ${r.commentaire ? `<div class="ia-desc">${esc(r.commentaire)}</div>` : ''}
-        <table class="diff"><tbody>
-          ${r.changes.map((c, i) => `<tr class="${c.on ? 'on' : ''}"><td><input type="checkbox" data-i="${i}" ${c.on ? 'checked' : ''}></td><th>${esc(c.label)}</th>
-            <td class="old ${c.type === 'list' ? 'keep' : ''}">${esc(fmtV(c, c.old))}${c.type === 'list' && c.old ? ' <span class="small">(conservés)</span>' : ''}</td><td class="arrow">→</td><td class="neu">${esc(fmtV(c, c.neu))}${c.warn ? ` <span class="warn-text small">(${esc(c.warn)})</span>` : ''}</td></tr>`).join('')}
-          ${r.noteOn ? `<tr class="${r.noteOn ? 'on' : ''}"><td><input type="checkbox" data-note ${r.noteOn ? 'checked' : ''}></td><th>Notes communes</th><td colspan="3" class="neu">ajouter : « MAJ IA ${esc(fmtDate(todayIso(), false))}${r.commentaire ? ' — ' + esc(r.commentaire) : ''}${r.source ? ' — source : ' + esc(r.source) : ''} »</td></tr>` : ''}
-        </tbody></table>
-      </div>`; }).join('') || '<p class="muted">Aucune information nouvelle à appliquer.</p>'}
-      </div>
+      <div class="ia-list">${found.map(r => majCardHtml(r)).join('') || '<p class="muted">Aucune information nouvelle à appliquer.</p>'}</div>
       ${rest.length ? `<details class="ia-rest"><summary>${rest.length} salon${rest.length > 1 ? 's' : ''} sans nouvelle information</summary><ul>
         ${rest.map(r => { const s = r.id && store.salons[r.id]; return `<li><b>${s ? esc(s.ville) + ' · ' + esc(s.nom) : esc(r.ref) + ' (référence inconnue)'}</b> — ${esc(r.commentaire || (r.trouve ? 'rien de nouveau' : 'prochaine édition non trouvée'))}${r.source ? ` <a href="${esc(safeUrl(r.source))}" target="_blank" rel="noopener">source</a>` : ''}</li>`; }).join('')}
       </ul></details>` : ''}
       <div class="actions ia-apply"><button class="btn primary" id="mApply">Appliquer les mises à jour cochées</button><span class="muted small" id="mState"></span></div>
     </div>
   </section>`;
-  $$('.maj-card', box).forEach(card => {
-    const r = R.find(x => x._k === +card.dataset.k);
-    $$('input[data-i]', card).forEach(i => i.onchange = () => { r.changes[+i.dataset.i].on = i.checked; i.closest('tr').classList.toggle('on', i.checked); $('.m-all', card).checked = r.changes.every(c => c.on); });
-    const nt = $('input[data-note]', card); if (nt) nt.onchange = () => { r.noteOn = nt.checked; nt.closest('tr').classList.toggle('on', nt.checked); };
-    $('.m-all', card).onchange = e => { r.changes.forEach(c => c.on = e.target.checked); if (nt) r.noteOn = e.target.checked; renderResultMaj(); };
-  });
+  $$('.maj-card', box).forEach(card => bindMajCard(card, R.find(x => x._k === +card.dataset.k), renderResultMaj));
   $('#mApply').onclick = async () => {
     $('#mApply').disabled = true;
     let n = 0;
-    for (const r of found) {
-      const on = r.changes.filter(c => c.on);
-      if (!on.length && !r.noteOn) continue;
-      const s = store.salons[r.id]; if (!s) continue;
-      const patch = { contacts: { ...(s.contacts || {}) } };
-      for (const c of on) {
-        if (c.type === 'list') patch.contacts[c.k] = [...(s.contacts?.[c.k] || []), ...c.neu];
-        else if (c.type === 'c') patch.contacts[c.k] = c.neu;
-        else patch[c.k] = c.neu;
-      }
-      // Historique : on garde l'édition et la date limite précédentes
-      if (patch.dateDebut && s.dateDebut && patch.dateDebut !== s.dateDebut) {
-        const he = [...(s.historiqueEditions || [])];
-        if (!he.some(x => x.dateDebut === s.dateDebut)) he.push({ dateDebut: s.dateDebut, dateFin: s.dateFin || '', horaires: s.horaires || '' });
-        patch.historiqueEditions = he.sort((a, b) => a.dateDebut.localeCompare(b.dateDebut));
-        if (!('dateFin' in patch)) patch.dateFin = '';
-      }
-      if (patch.dateLimite && s.dateLimite && patch.dateLimite !== s.dateLimite) {
-        const hl = [...(s.historiqueLimites || [])]; if (!hl.includes(s.dateLimite)) hl.push(s.dateLimite); patch.historiqueLimites = hl.sort();
-      }
-      if (r.noteOn) patch.notes = [s.notes, `MAJ IA ${fmtDate(todayIso(), false)}${r.commentaire ? ' — ' + r.commentaire : ''}${r.source ? ' — source : ' + r.source : ''}`].filter(Boolean).join('\n');
-      $('#mState').textContent = `Mise à jour : ${s.ville}…`;
-      await store.saveSalon(r.id, patch);
-      n++;
-    }
+    for (const r of found) { $('#mState').textContent = `Mise à jour : ${store.salons[r.id]?.ville || ''}…`; if (await applyMaj(r)) n++; }
     IA.resultat = null; IA.reponse = ''; IA.sel = null; saveIA();
     toast(`${n} salon${n > 1 ? 's' : ''} mis à jour`);
     renderIA();
   };
+}
+
+// ── IA depuis la fiche d'un salon ──
+async function iaFiche(id) {
+  const s = store.salons[id]; if (!s) return;
+  const { prompt, refs } = promptMaj([id]);
+  const ok = await copyText(prompt);
+  window.open('https://chatgpt.com/?hints=search', '_blank', 'noopener');
+  let res = null;
+  const title = `<header class="m-head"><div><h2>✨ Mise à jour IA</h2><p class="muted">${esc(s.ville)} · ${esc(s.nom)}</p></div><button type="button" class="x" data-close aria-label="Fermer">×</button></header>`;
+  const step1 = () => {
+    openModal(`<div class="modal-inner ia-pop">
+      ${title}
+      <p class="ia-hint">${ok ? '✅ Le prompt est copié et ChatGPT s\'est ouvert dans un nouvel onglet : colle-le (Ctrl/Cmd + V), lance la recherche, puis copie la réponse ici.' : '⚠️ La copie automatique a échoué : clique « Recopier le prompt », puis colle-le dans ChatGPT.'}</p>
+      <textarea id="popRep" rows="10" placeholder="Colle ici la réponse de ChatGPT…"></textarea>
+      <p class="err" id="popErr"></p>
+      <div class="actions"><button class="btn primary" id="popParse">Analyser la réponse</button><button class="btn" id="popCopy">Recopier le prompt</button><div class="grow"></div><button class="btn ghost" id="popBack">Retour à la fiche</button></div>
+    </div>`);
+    $('#popRep').focus();
+    $('#popCopy').onclick = async () => toast((await copyText(prompt)) ? 'Prompt copié' : 'Copie impossible');
+    $('#popBack').onclick = () => openSalon(id);
+    $('#popParse').onclick = () => {
+      try { res = parseMaj(extractJson($('#popRep').value), refs)[0]; if (!res || !res.id) throw new Error('La réponse ne correspond pas à ce salon.'); step2(); }
+      catch (e) { $('#popErr').textContent = e.message; }
+    };
+  };
+  const step2 = () => {
+    const has = res.changes.length || res.commentaire || res.source;
+    openModal(`<div class="modal-inner ia-pop">
+      ${title}
+      ${res.changes.length ? '<p class="ia-hint">Coche les modifications à conserver, puis valide.</p>'
+        : `<p class="ia-hint">Aucune nouvelle date ni nouveau contact trouvé${res.trouve ? '' : ' : la prochaine édition ne semble pas encore annoncée'}.</p>`}
+      ${has ? majCardHtml(res, false) : ''}
+      <div class="actions m-foot"><button class="btn ghost" id="popRetry">Coller une autre réponse</button><div class="grow"></div><button class="btn" id="popCancel">Annuler</button><button class="btn primary" id="popApply" ${has ? '' : 'disabled'}>Valider les modifications</button></div>
+    </div>`);
+    const card = $('.ia-pop .maj-card'); if (card) bindMajCard(card, res, step2);
+    $('#popRetry').onclick = step1;
+    $('#popCancel').onclick = () => openSalon(id);
+    $('#popApply').onclick = async () => {
+      $('#popApply').disabled = true;
+      const done = await applyMaj(res);
+      toast(done ? 'Salon mis à jour' : 'Rien à enregistrer');
+      openSalon(id);
+    };
+  };
+  step1();
 }
 
 boot();
