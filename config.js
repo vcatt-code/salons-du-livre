@@ -12,7 +12,7 @@ export const firebaseConfig = {
   storageBucket: "salons-du-livre.firebasestorage.app",
   messagingSenderId: "936386688685",
   appId: "1:936386688685:web:06c58453ac95ccb01e3824"
-};ig);
+};
 
 /* Exemple :
 export const firebaseConfig = {
