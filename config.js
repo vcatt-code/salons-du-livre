@@ -5,7 +5,14 @@
 //  Tant que cette valeur vaut null, l'application tourne en
 //  « mode local » (données dans le navigateur, non partagées).
 // ─────────────────────────────────────────────────────────────
-export const firebaseConfig = null;
+export const firebaseConfig = {
+  apiKey: "AIzaSyAHQ1h1s35J50Q-ThJxb1jD39X7MIRXN_4",
+  authDomain: "salons-du-livre.firebaseapp.com",
+  projectId: "salons-du-livre",
+  storageBucket: "salons-du-livre.firebasestorage.app",
+  messagingSenderId: "936386688685",
+  appId: "1:936386688685:web:06c58453ac95ccb01e3824"
+};ig);
 
 /* Exemple :
 export const firebaseConfig = {
