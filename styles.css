@@ -435,3 +435,81 @@ label.inline select { width: auto; min-width: 0; padding-top: .35rem; padding-bo
   .filters { grid-template-columns: 1fr; } .fblock:first-child { grid-column: auto; }
   .toolbar #addSalon, .toolbar #exportCsv { flex: 1 1 45%; }
 }
+
+/* ── Sections & sous-onglets ── */
+.subtabs { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: 1rem; border-bottom: 1px solid var(--line); }
+.subtabs button { position: relative; border: 0; background: none; font: inherit; font-size: .98rem; font-weight: 500; color: var(--muted); padding: .55rem .95rem .7rem; cursor: pointer; }
+.subtabs button:hover { color: var(--ink); }
+.subtabs button.on { color: var(--accent); font-weight: 600; }
+.subtabs button.on::after { content: ''; position: absolute; left: .6rem; right: .6rem; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0; background: var(--accent); }
+.hero p#banner:empty + .subtabs { margin-top: .8rem; }
+pre.code { text-align: left; background: #2a2521; color: #f5ede4; padding: .9rem 1rem; border-radius: 10px; font-size: .85rem; overflow: auto; }
+
+/* ── Statuts concours ── */
+:root {
+  --c-a_etudier: #e0a458;   --c-a_etudier-bg: #fbf1e3;
+  --c-preparation: #3b7dc4; --c-preparation-bg: #e4effa;
+  --c-depose: #8a63b8;      --c-depose-bg: #efe8f8;
+  --c-selection: #1f8a8a;   --c-selection-bg: #e1f3f2;
+  --c-laureat: #2e7d4f;     --c-laureat-bg: #e8f4ec;
+  --c-non_retenu: #b06a5a;  --c-non_retenu-bg: #f6e9e5;
+  --c-hors_sujet: #a79e95;  --c-hors_sujet-bg: #f1ede8;
+}
+.crow { grid-template-columns: minmax(240px, 2.4fr) minmax(130px, 1fr) minmax(105px, .85fr) 78px minmax(150px, 1.35fr) minmax(160px, 1.3fr) 96px; }
+.row.crow::before { background: var(--c-a_etudier); }
+.row.cst-preparation::before { background: var(--c-preparation); }
+.row.cst-depose::before { background: var(--c-depose); }
+.row.cst-selection::before { background: var(--c-selection); }
+.row.cst-laureat { background: linear-gradient(90deg, var(--c-laureat-bg), var(--paper) 60%); border-color: #cfe5d6; }
+.row.cst-laureat::before { background: linear-gradient(180deg, #d4a73a, var(--c-laureat)); }
+.row.cst-non_retenu::before { background: var(--c-non_retenu); }
+.row.cst-non_retenu { opacity: .75; }
+.row.cst-hors_sujet { opacity: .55; background: var(--c-hors_sujet-bg); }
+.row.cst-hors_sujet .name { text-decoration: line-through; }
+.row.cst-hors_sujet::before { background: repeating-linear-gradient(45deg, var(--c-hors_sujet) 0 3px, transparent 3px 6px); }
+.badge.cst-a_etudier { background: var(--c-a_etudier-bg); color: #9a6420; }
+.row .badge.cst-a_etudier { display: none; }
+.badge.cst-preparation { background: var(--c-preparation-bg); color: #2c65a3; }
+.badge.cst-depose { background: var(--c-depose-bg); color: #6d4a98; }
+.badge.cst-selection { background: var(--c-selection-bg); color: #16706f; }
+.badge.cst-laureat { background: var(--c-laureat); color: #fff; }
+.badge.cst-non_retenu { background: var(--c-non_retenu-bg); color: #8e4a3c; }
+.badge.cst-hors_sujet { background: var(--c-hors_sujet-bg); color: var(--muted); }
+.seg button.on.cst-a_etudier { border-color: var(--c-a_etudier); color: #9a6420; background: var(--c-a_etudier-bg); }
+.seg button.on.cst-preparation { border-color: var(--c-preparation); color: #2c65a3; background: var(--c-preparation-bg); }
+.seg button.on.cst-depose { border-color: var(--c-depose); color: #fff; background: var(--c-depose); }
+.seg button.on.cst-selection { border-color: var(--c-selection); color: #fff; background: var(--c-selection); }
+.seg button.on.cst-laureat { border-color: var(--c-laureat); color: #fff; background: linear-gradient(135deg, #c99a2e, var(--c-laureat)); }
+.seg button.on.cst-non_retenu { border-color: var(--c-non_retenu); color: #8e4a3c; background: var(--c-non_retenu-bg); }
+.seg button.on.cst-hors_sujet { border-color: var(--c-hors_sujet); color: var(--ink); background: var(--c-hors_sujet-bg); text-decoration: line-through; }
+.fc-a_etudier .dot { background: var(--c-a_etudier); }
+.fc-preparation .dot { background: var(--c-preparation); }
+.fc-depose .dot { background: var(--c-depose); }
+.fc-selection .dot { background: var(--c-selection); }
+.fc-laureat .dot { background: var(--c-laureat); }
+.fc-non_retenu .dot { background: var(--c-non_retenu); }
+.fc-hors_sujet .dot { background: repeating-linear-gradient(45deg, var(--c-hors_sujet) 0 2px, #fff 2px 4px); }
+.mini-av.c-depose { background: var(--c-depose-bg); color: var(--c-depose); }
+.mini-av.c-selection { background: var(--c-selection-bg); color: var(--c-selection); }
+.mini-av.c-laureat { background: var(--c-laureat-bg); color: var(--c-laureat); }
+.crow .name { font-weight: 700; font-size: 1.02rem; }
+.crow .salon-name.nomarg { margin-left: 0; }
+.crow .tags { display: flex; flex-wrap: wrap; gap: .3rem; margin-top: .3rem; }
+.tag { font-size: .72rem; font-weight: 500; padding: .1rem .5rem; border-radius: 999px; background: #f1ede8; color: var(--ink-2); }
+.tag.ok { background: var(--st-inscrit-bg); color: var(--st-inscrit); }
+.tag.no { background: #f6e9e5; color: #8e4a3c; }
+.crow .frais { font-variant-numeric: tabular-nums; font-weight: 500; }
+.crow .frais.free { color: var(--st-inscrit); font-weight: 600; }
+.crow .dot2 { font-size: .88rem; color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+@media (max-width: 1280px) {
+  .crow { grid-template-columns: minmax(220px, 2fr) 1fr .9fr 70px 1.2fr 80px; }
+  .crow .c-links { display: none; }
+  .row.crow.head > div:nth-of-type(2) { display: none; }
+}
+@media (max-width: 760px) {
+  .crow { grid-template-columns: 1fr 1fr; }
+  .crow .dot2 { grid-column: span 2; -webkit-line-clamp: 3; }
+  .tabs button { padding: .55rem .8rem; font-size: .92rem; }
+  .subtabs { overflow-x: auto; flex-wrap: nowrap; }
+  .subtabs button { white-space: nowrap; }
+}

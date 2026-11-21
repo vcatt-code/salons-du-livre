@@ -11,20 +11,26 @@ export async function createFirebaseStore(config) {
   const auth = A.getAuth(app);
   const db = F.getFirestore(app);
 
-  const data = { salons: {}, users: {}, sources: {} };
+  const data = { salons: {}, users: {}, sources: {}, concours: {} };
+  let concoursError = null;
   let unsubs = [];
   let current = null;
   let listeners;
 
   function subscribe(onData, onError) {
     unsubs.forEach(u => u()); unsubs = [];
-    for (const name of ['salons', 'users', 'sources']) {
+    for (const name of ['salons', 'users', 'sources', 'concours']) {
       unsubs.push(F.onSnapshot(F.collection(db, name), snap => {
         const obj = {};
         snap.forEach(d => { obj[d.id] = d.data(); });
         data[name] = obj;
+        if (name === 'concours') concoursError = null;
         onData();
-      }, err => onError(err)));
+      }, err => {
+        // Une erreur sur « concours » (règles pas encore mises à jour) ne bloque pas les salons
+        if (name === 'concours') { concoursError = err; onData(); }
+        else onError(err);
+      }));
     }
   }
 
@@ -52,6 +58,8 @@ export async function createFirebaseStore(config) {
     get salons() { return data.salons; },
     get users() { return data.users; },
     get sources() { return data.sources; },
+    get concours() { return data.concours; },
+    get concoursError() { return concoursError; },
 
     async loginGoogle() { await A.signInWithPopup(auth, new A.GoogleAuthProvider()); },
     async loginEmail(email, pwd) { await A.signInWithEmailAndPassword(auth, email, pwd); },
@@ -86,6 +94,18 @@ export async function createFirebaseStore(config) {
       await F.setDoc(ref, { ...payload, ...extra }, { merge: true });
     },
     async deleteSource(id) { await F.deleteDoc(F.doc(db, 'sources', id)); },
+    // Concours
+    async saveConcours(id, payload) {
+      const ref = id ? F.doc(db, 'concours', id) : F.doc(F.collection(db, 'concours'));
+      const extra = { majLe: nowIso(), majPar: current.name };
+      if (!id) extra.creePar = current.name;
+      await F.setDoc(ref, { ...payload, ...extra }, { merge: true });
+      return ref.id;
+    },
+    async deleteConcours(id) { await F.deleteDoc(F.doc(db, 'concours', id)); },
+    async setMineConcours(cid, patch) {
+      await F.setDoc(F.doc(db, 'users', current.uid), { concours: { [cid]: { ...patch, maj: nowIso() } } }, { merge: true });
+    },
     async importSeed(seed, applyToMe) {
       const mine = {};
       const chunks = [];

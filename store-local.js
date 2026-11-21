@@ -17,7 +17,7 @@ export function createLocalStore() {
   function load() {
     try { return JSON.parse(localStorage.getItem(KEY)) || blank(); } catch { return blank(); }
   }
-  function blank() { return { salons: {}, users: {}, sources: {}, currentUid: null }; }
+  function blank() { return { salons: {}, users: {}, sources: {}, concours: {}, currentUid: null }; }
   function persist() {
     try { localStorage.setItem(KEY, JSON.stringify(db)); } catch {}
     listeners.onData();
@@ -31,6 +31,8 @@ export function createLocalStore() {
     get salons() { return db.salons; },
     get users() { return db.users; },
     get sources() { return db.sources; },
+    get concours() { return db.concours || (db.concours = {}); },
+    concoursError: null,
     // profils locaux
     listProfiles() { return Object.entries(db.users).map(([id, u]) => ({ uid: id, name: u.name, hasPwd: !!u.pwd })); },
     async selectProfile(id, pwd) {
@@ -62,6 +64,19 @@ export function createLocalStore() {
       persist();
     },
     async deleteSource(id) { delete db.sources[id]; persist(); },
+    // Concours
+    async saveConcours(id, data) {
+      db.concours = db.concours || {};
+      const nid = id || uid();
+      db.concours[nid] = { ...(db.concours[nid] || {}), ...data, majLe: new Date().toISOString(), majPar: me()?.name || '', ...(id ? {} : { creePar: me()?.name || '' }) };
+      persist(); return nid;
+    },
+    async deleteConcours(id) { delete db.concours[id]; persist(); },
+    async setMineConcours(cid, patch) {
+      const u = db.users[db.currentUid]; u.concours = u.concours || {};
+      u.concours[cid] = { ...(u.concours[cid] || {}), ...patch, maj: new Date().toISOString() };
+      persist();
+    },
     async importSeed(seed, applyToMe) {
       const u = db.users[db.currentUid]; u.salons = u.salons || {};
       for (const s of seed.salons) {

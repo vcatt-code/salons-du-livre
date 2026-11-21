@@ -1,6 +1,9 @@
 # 📚 Salons du livre
 
-Suivi partagé des salons du livre entre plusieurs auteurs : liste commune des salons, suivi personnel (statut, notes), sources, et recherche assistée par IA (nouveaux salons, mise à jour des dates).
+Suivi partagé entre plusieurs auteurs, en deux sections indépendantes :
+
+- **Salons du livre** : liste commune des salons, suivi personnel (statut, notes), sources, recherche IA (nouveaux salons, mise à jour des dates).
+- **Concours littéraires** : liste commune des prix, concours et appels à manuscrits, suivi personnel (statut, œuvre proposée, date de dépôt, notes), sources, recherche IA (nouveaux concours, prochaines éditions).
 
 Site statique (HTML/CSS/JS, sans compilation) hébergé sur **GitHub Pages**. Données dans **Firebase** (Authentication + Cloud Firestore, offre gratuite « Spark »).
 
@@ -29,7 +32,9 @@ Modifier un fichier sur GitHub (✏️ puis *Commit changes*) : le site se met �
 
 - `salons/{id}` : nom, ville, codePostal, pays, distCorbie, distOignies, dateDebut, dateFin, horaires, dateLimite, historiqueLimites[], historiqueEditions[], contacts{nom, emails[], telephones[], site, facebook, instagram, formulaire, autres}, notes, origine, creePar, majPar, majLe
 - `users/{uid}` : name, email, salons{ <salonId>: {statut, notes, maj} }
-- `sources/{id}` : titre, url, note, ajoutePar, ajouteLe
+- `concours/{id}` : nom, organisateur, type, genres, formats, autoEdition, zone, frais, dotation, dateOuverture, dateLimite, dateResultats, recurrence, conditions, modalites, site, reglement, formulaire, emails[], facebook, instagram, notes, historiqueLimites[], creePar, majPar, majLe
+- `users/{uid}.concours` : { <concoursId>: {statut, oeuvre, dateDepot, notes, maj} }
+- `sources/{id}` : titre, url, note, section (`salons` ou `concours`), ajoutePar, ajouteLe
 
 ## Sauvegarde
 

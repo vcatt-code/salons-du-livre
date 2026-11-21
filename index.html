@@ -16,13 +16,12 @@
       <img class="logo" src="img/logo.png" alt="" width="46" height="40">
       <div>
         <div class="brand-name">Salons du livre</div>
-        <p class="sub">Suivi partagé des salons &amp; inscriptions</p>
+        <p class="sub">Salons, concours &amp; suivi partagé</p>
       </div>
     </div>
     <nav class="tabs" id="tabs" hidden>
-      <button data-view="salons" class="active">Salons</button>
-      <button data-view="sources">Sources</button>
-      <button data-view="ia">✨ Recherche IA</button>
+      <button data-section="salons" class="active">📚 Salons du livre</button>
+      <button data-section="concours">🏆 Concours</button>
     </nav>
     <div class="user" id="userBox"></div>
   </header>
@@ -30,6 +29,7 @@
   <section class="hero">
     <h1 id="heroTitle">Salons du livre</h1>
     <p id="banner"></p>
+    <nav class="subtabs" id="subtabs" hidden></nav>
   </section>
   <main id="main"><div class="loading">Chargement…</div></main>
 
