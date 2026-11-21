@@ -1453,6 +1453,19 @@ async function iaFiche(id) {
   iaPopup({ subtitle: `${s.ville} · ${s.nom}`, prompt, parse: j => parseMaj(j, refs), apply: applyMaj, back: () => openSalon(id), emptyMsg: 'Aucune nouvelle date ni nouveau contact trouvé' });
 }
 
+// ── Écritures : nettoyage, délai max, messages d'erreur lisibles ──
+const cleanData = o => JSON.parse(JSON.stringify(o, (k, v) => (typeof v === 'number' && !isFinite(v)) ? null : v));
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error('timeout'), { code: 'timeout' })), ms))]);
+}
+function writeErrorMsg(e) {
+  const c = String(e?.code || '') + ' ' + String(e?.message || '');
+  if (/permission|insufficient/i.test(c)) return 'Enregistrement refusé par la base : les règles Firestore publiées ne contiennent pas (ou pas au bon endroit) le bloc « match /concours/{concoursId} ». Vérifie-les puis clique Publier.';
+  if (/timeout/i.test(c)) return 'Le serveur ne confirme pas l\'enregistrement (délai dépassé). Vérifie ta connexion, ou désactive le bloqueur de publicités pour ce site, puis réessaie.';
+  if (/invalid|unsupported/i.test(c)) return 'Donnée refusée par la base : ' + (e.message || c);
+  return 'Erreur d\'enregistrement : ' + (e.message || c);
+}
+
 // ═════════════════════════ SECTION CONCOURS ═════════════════════════
 const CSTATUTS = {
   a_etudier:   { label: 'À étudier',      short: 'À étudier' },
@@ -1990,18 +2003,26 @@ function renderCResultNouveaux() {
   $('#rApply').onclick = async () => {
     const todo = R.filter(n => n._on);
     $('#rApply').disabled = true;
-    let done = 0;
-    for (const n of todo) {
-      $('#rState').textContent = `Ajout ${done + 1}/${todo.length}…`;
+    $('#rState').className = 'muted small';
+    $('#rState').textContent = `Enregistrement de ${todo.length} concours…`;
+    const payloads = todo.map(n => {
       const { _k, _on, _dup, source, confiance, ...data } = n;
       data.historiqueLimites = [];
       data.notes = source ? `Trouvé par recherche IA le ${fmtDate(todayIso(), false)} — source : ${source}` : '';
       data.origine = 'Recherche IA';
-      await store.saveConcours(null, data);
-      done++;
+      return cleanData(data);
+    });
+    try {
+      await withTimeout(store.addConcoursMany(payloads), 25000);
+    } catch (e) {
+      console.error(e);
+      $('#rState').className = 'err';
+      $('#rState').textContent = writeErrorMsg(e);
+      $('#rApply').disabled = false;
+      return;
     }
     CIA.resultat = null; CIA.reponse = ''; saveCIA();
-    toast(`${done} concours ajouté${done > 1 ? 's' : ''}`);
+    toast(`${payloads.length} concours ajouté${payloads.length > 1 ? 's' : ''}`);
     setView('c-liste');
   };
 }
@@ -2148,7 +2169,7 @@ async function applyCMaj(r) {
     const hl = [...(c.historiqueLimites || [])]; if (!hl.includes(c.dateLimite)) hl.push(c.dateLimite); patch.historiqueLimites = hl.sort();
   }
   if (r.noteOn && (r.commentaire || r.source)) patch.notes = [c.notes, noteText(r)].filter(Boolean).join('\n');
-  await store.saveConcours(r.id, patch);
+  await store.saveConcours(r.id, cleanData(patch));
   return true;
 }
 const cHeading = r => { const c = allConcours()[r.id] || {}; return `<b>${esc(c.nom)}</b>${c.organisateur ? ' · ' + esc(c.organisateur) : ''}`; };
@@ -2173,7 +2194,8 @@ function renderCResultMaj() {
   $('#mApply').onclick = async () => {
     $('#mApply').disabled = true;
     let n = 0;
-    for (const r of found) { if (await applyCMaj(r)) n++; }
+    try { for (const r of found) { $('#mState').textContent = `Mise à jour ${n + 1}/${found.length}…`; if (await withTimeout(applyCMaj(r), 20000)) n++; } }
+    catch (e) { console.error(e); $('#mState').className = 'err'; $('#mState').textContent = writeErrorMsg(e); $('#mApply').disabled = false; return; }
     CIA.resultat = null; CIA.reponse = ''; CIA.sel = null; saveCIA();
     toast(`${n} concours mis à jour`);
     renderCIA();

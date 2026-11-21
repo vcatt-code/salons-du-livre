@@ -71,6 +71,7 @@ export function createLocalStore() {
       db.concours[nid] = { ...(db.concours[nid] || {}), ...data, majLe: new Date().toISOString(), majPar: me()?.name || '', ...(id ? {} : { creePar: me()?.name || '' }) };
       persist(); return nid;
     },
+    async addConcoursMany(list) { for (const d of list) await this.saveConcours(null, d); },
     async deleteConcours(id) { delete db.concours[id]; persist(); },
     async setMineConcours(cid, patch) {
       const u = db.users[db.currentUid]; u.concours = u.concours || {};

@@ -102,6 +102,13 @@ export async function createFirebaseStore(config) {
       await F.setDoc(ref, { ...payload, ...extra }, { merge: true });
       return ref.id;
     },
+    async addConcoursMany(list) {
+      for (let i = 0; i < list.length; i += 400) {
+        const batch = F.writeBatch(db);
+        for (const payload of list.slice(i, i + 400)) batch.set(F.doc(F.collection(db, 'concours')), { ...payload, creePar: current.name, majPar: current.name, majLe: nowIso() });
+        await batch.commit();
+      }
+    },
     async deleteConcours(id) { await F.deleteDoc(F.doc(db, 'concours', id)); },
     async setMineConcours(cid, patch) {
       await F.setDoc(F.doc(db, 'users', current.uid), { concours: { [cid]: { ...patch, maj: nowIso() } } }, { merge: true });
