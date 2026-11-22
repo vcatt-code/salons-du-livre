@@ -513,3 +513,16 @@ pre.code { text-align: left; background: #2a2521; color: #f5ede4; padding: .9rem
   .subtabs { overflow-x: auto; flex-wrap: nowrap; }
   .subtabs button { white-space: nowrap; }
 }
+
+/* ── Statuts salons : Refusé / Pas cette année ── */
+:root { --st-refuse: #b0574a; --st-refuse-bg: #f8e8e4; --st-pas_cette_annee: #7d8a99; --st-pas_cette_annee-bg: #edf0f3; }
+.row.st-refuse::before { background: var(--st-refuse); }
+.row.st-refuse { opacity: .78; }
+.row.st-pas_cette_annee::before { background: repeating-linear-gradient(180deg, var(--st-pas_cette_annee) 0 6px, transparent 6px 10px); }
+.row.st-pas_cette_annee { opacity: .7; background: #f7f8f9; }
+.st-refuse.badge { background: var(--st-refuse-bg); color: #8e4a3c; }
+.st-pas_cette_annee.badge { background: var(--st-pas_cette_annee-bg); color: #556270; }
+.seg button.on.st-refuse { border-color: var(--st-refuse); color: #fff; background: var(--st-refuse); }
+.seg button.on.st-pas_cette_annee { border-color: var(--st-pas_cette_annee); color: #3f4a56; background: var(--st-pas_cette_annee-bg); }
+.fs-refuse .dot { background: var(--st-refuse); }
+.fs-pas_cette_annee .dot { background: var(--st-pas_cette_annee); }

@@ -17,9 +17,13 @@ const STATUTS = {
   contacte:    { label: 'Contacté',    short: 'Contacté' },
   candidature: { label: 'Candidature envoyée', short: 'Candidature' },
   inscrit:     { label: 'Inscrit',     short: 'Inscrit' },
+  refuse:      { label: 'Refusé',      short: 'Refusé' },
+  pas_cette_annee: { label: 'Pas cette année', short: 'Pas cette année' },
   hors_sujet:  { label: 'Hors sujet',  short: 'Hors sujet' },
 };
-const STATUT_ORDER = ['a_etudier', 'contacte', 'candidature', 'inscrit', 'hors_sujet'];
+const STATUT_ORDER = ['a_etudier', 'contacte', 'candidature', 'inscrit', 'refuse', 'pas_cette_annee', 'hors_sujet'];
+// Rang pour le tri « Mon statut » : inscrits d'abord, hors sujet en dernier
+const STATUT_RANK = { inscrit: 0, candidature: 1, contacte: 2, a_etudier: 3, pas_cette_annee: 4, refuse: 5, hors_sujet: 6 };
 
 const IMG = { email: 'img/email.png', facebook: 'img/facebook.png', instagram: 'img/instagram.png' };
 const svg = d => `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
@@ -86,12 +90,14 @@ let store;
 let me = null;
 let view = 'salons';
 const prefsKey = 'salons-du-livre-filtres';
-const ALL_ST = ['a_etudier', 'contacte', 'candidature', 'inscrit', 'hors_sujet'];
+const ALL_ST = STATUT_ORDER.slice();
 const ALL_PER = ['avenir', 'passe', 'sansdate'];
-const DEF_ST = ['a_etudier', 'contacte', 'candidature', 'inscrit'];
+const DEF_ST = ['a_etudier', 'contacte', 'candidature', 'inscrit', 'refuse', 'pas_cette_annee'];
 let F = { q: '', statuts: DEF_ST.slice(), periodes: ALL_PER.slice(), tri: 'date', distMax: '', distRef: 'corbie' };
 try { Object.assign(F, JSON.parse(localStorage.getItem(prefsKey)) || {}); } catch {}
 if (!Array.isArray(F.statuts)) F.statuts = DEF_ST.slice();
+// Nouveaux statuts : visibles par défaut pour les filtres déjà enregistrés
+if ((F.stv || 1) < 2) { for (const k of ['refuse', 'pas_cette_annee']) if (!F.statuts.includes(k)) F.statuts.push(k); F.stv = 2; }
 if (!Array.isArray(F.periodes)) F.periodes = ALL_PER.slice();
 delete F.statut; delete F.showHS; delete F.periode;
 const periodeOf = s => isUpcoming(s) ? 'avenir' : (s.dateDebut || s.dateFin) ? 'passe' : 'sansdate';
@@ -364,7 +370,7 @@ function filteredSalons() {
     corbie: (a, b) => cmpNum(a.distCorbie, b.distCorbie),
     oignies: (a, b) => cmpNum(a.distOignies, b.distOignies),
     nom: (a, b) => norm(a.ville + a.nom).localeCompare(norm(b.ville + b.nom)),
-    statut: (a, b) => STATUT_ORDER.indexOf(b._st) - STATUT_ORDER.indexOf(a._st) || dateKey(a).localeCompare(dateKey(b)),
+    statut: (a, b) => (STATUT_RANK[a._st] ?? 9) - (STATUT_RANK[b._st] ?? 9) || dateKey(a).localeCompare(dateKey(b)),
   };
   return list.sort(sorters[F.tri] || sorters.date);
 }
@@ -397,7 +403,7 @@ function renderSalons() {
   const mine = store.users[me.uid]?.salons || {};
   const t = todayIso();
   const nbInscrits = Object.entries(mine).filter(([id, v]) => v.statut === 'inscrit' && store.salons[id] && isUpcoming(store.salons[id])).length;
-  const limites30 = Object.entries(store.salons).filter(([id, s]) => { const l = s.dateLimite; return l && l >= t && daysUntil(l) <= 30 && !['inscrit', 'hors_sujet'].includes(myStatut(id)); }).length;
+  const limites30 = Object.entries(store.salons).filter(([id, s]) => { const l = s.dateLimite; return l && l >= t && daysUntil(l) <= 30 && !['inscrit', 'refuse', 'pas_cette_annee', 'hors_sujet'].includes(myStatut(id)); }).length;
   const aVenir = Object.values(store.salons).filter(isUpcoming).length;
   const counts = { st: {}, per: {} };
   for (const [id, s] of Object.entries(store.salons)) {
